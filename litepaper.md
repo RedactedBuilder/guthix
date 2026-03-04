@@ -1,7 +1,7 @@
 # GUTHIX Protocol Litepaper
 
 > **The Synthetic Liquidity Standard**  
-> **Version:** 1.1.0 (Pure Real Yield)  
+> **Version:** 1.2.0 (Final — Pure Real Yield)  
 > **Date:** March 2026  
 > **Status:** 🚧 In Development  
 > **Network:** Solana (Operations) | Base (Governance Hub)
@@ -10,9 +10,15 @@
 
 ## 📋 Abstract
 
-GUTHIX is a decentralized liquidity layer that unifies fragmented stablecoin markets through a minimalist, revenue-first architecture. Unlike traditional stablecoin protocols that rely on direct redemptions, inflationary emissions, or complex governance tokens, GUTHIX operates as a **Vault-as-Market-Maker**: collateral is deployed into deep liquidity pools, and 100% of protocol revenue flows directly to **sgxUSD** stakers via NAV appreciation.
+GUTHIX is a minimalist decentralized liquidity protocol that unifies fragmented stablecoin markets through a revenue-first, emission-free architecture. Unlike traditional stablecoin protocols that rely on direct redemptions, inflationary token emissions, or complex governance mechanics, GUTHIX operates as a **Vault-as-Market-Maker**: collateral is deployed into deep, protocol-owned liquidity pools, and 100% of protocol revenue flows directly to **sgxUSD** stakers via NAV appreciation.
 
-By abstracting liquidity management into a simple token interface, GUTHIX enables users to access cross-chain liquidity and sustainable yield without managing positions, staking, or locking assets. This litepaper outlines the protocol's architecture, economic model, and roadmap for a capital-efficient, emission-free liquidity standard.
+By abstracting liquidity management into a simple token interface, GUTHIX enables users to access cross-chain liquidity and sustainable yield without managing positions, staking, or locking assets. This litepaper outlines the protocol's architecture, economic model, and roadmap for a capital-efficient, self-reinforcing liquidity standard.
+
+**Key Innovations:**
+- **Swap-to-Grow:** Secondary market swaps automatically expand the protocol vault via Protocol-Owned Liquidity (POL) rebalancing.
+- **Silent Rebalance:** User exits are absorbed by POL and rebalanced by an off-chain Keeper—no redemption queues, no user friction.
+- **Passive Liquidity Deepening:** Collateral yield and trading fees compound over time, making the protocol safer and deeper without external incentives.
+- **Pure Real Yield:** 100% of revenue flows to sgxUSD stakers. Zero inflationary emissions. Zero dilution.
 
 ---
 
@@ -40,8 +46,8 @@ GUTHIX addresses these challenges through four core principles:
 |-----------|---------------|---------|
 | **Minimalist Security** | Single custom Anchor program (`guthix-core`); governance via Squads Multisig; bridging via Wormhole NTT | Reduced audit surface; lower attack vector count |
 | **Pure Real Yield** | 100% of protocol revenue (fees + collateral yield) flows to sgxUSD stakers; zero inflationary emissions | Sustainable APY; no dilution; regulatory clarity |
-| **Abstracted Liquidity** | Protocol-Owned Liquidity (POL) deployed by off-chain Keeper; users hold gxUSD/sgxUSD without managing LP positions | "Set and forget" yield; deep liquidity by default |
-| **No Direct Redemptions** | Users exit via secondary markets (AMM/CLOB); protocol supports price via buyback & burn | Eliminates bank-run vector; simplifies contract logic |
+| **Swap-to-Grow** | Protocol-Owned Liquidity (POL) + synthetic token design: every USDC → gxUSD swap expands vault collateral | Organic growth without user friction; no minting UI required |
+| **Silent Rebalance** | Off-chain Keeper absorbs secondary market sells and rebalances vault collateral automatically | No redemption queues; no bank-run vector; seamless exits |
 
 ---
 
@@ -59,7 +65,7 @@ graph TD
     
     Guardian[Guardian Squads] -->|Admin| Core
     Keeper[Off-Chain Keeper] -->|Monitor| Core
-    Keeper -->|Manage| Meteora[Meteora AMM / CLOB]
+    Keeper -->|Rebalance| Meteora[Meteora AMM / CLOB]
     Keeper -->|Buyback| Token
     
     Wormhole[Wormhole NTT] -->|Bridge| Base[Base Hub]
@@ -77,8 +83,8 @@ graph TD
 | **Governance** | Squads Protocol (Multisig) | Parameter updates, Emergency pauses, Keeper authorization |
 | **Token** | SPL Token-2022 | gxUSD standard (metadata, extensions); sgxUSD as receipt token |
 | **Bridging** | Wormhole NTT | Canonical lock/mint across Solana ↔ Base |
-| **Liquidity** | Meteora StableSwap + Solana CLOB | Protocol-owned liquidity depth for core and bridge pairs |
-| **Maintenance** | Off-Chain Keeper (Rust/TS) | Buybacks, LP management, NAV monitoring, revenue collection |
+| **Liquidity** | Meteora StableSwap + Solana CLOB | Protocol-Owned Liquidity (POL) for core and bridge pairs |
+| **Maintenance** | Off-Chain Keeper (Rust/TS) | POL rebalancing, buybacks, NAV monitoring, revenue collection |
 
 ### Smart Contract Scope (v1.0)
 
@@ -86,10 +92,10 @@ graph TD
 // guthix-core program instructions
 pub enum Instruction {
     Initialize,           // Setup vault, token mint, guardian
-    Deposit,              // Lock collateral → Mint gxUSD
+    Deposit,              // Lock collateral → Mint gxUSD (Primary Market)
     Stake,                // Deposit gxUSD → Mint sgxUSD
     Unstake,              // Burn sgxUSD → Withdraw gxUSD + yield
-    WithdrawCollateral,   // Keeper-only: Unlock collateral for buybacks
+    WithdrawCollateral,   // Keeper-only: Unlock collateral for rebalancing
     UpdateConfig,         // Guardian-only: Adjust fees, pause, keeper address
     Pause,                // Guardian-only: Emergency halt
 }
@@ -108,9 +114,10 @@ pub enum Instruction {
 | **Type** | SPL Token-2022 (non-interest-bearing) |
 | **Peg Target** | Synthetic $1.00 USD (market-driven) |
 | **Collateral** | Tiered basket: USDC (Core), sUSDe/syrupUSDC (Yield), whUSDC/USDT0 (Bridge) |
-| **Minting** | Open: Deposit approved collateral → Mint gxUSD |
+| **Minting** | Open: Deposit approved collateral → Mint gxUSD (Primary Market) |
+| **Secondary Acquisition** | Swap USDC → gxUSD on AMM (Secondary Market) — triggers Swap-to-Grow |
 | **Redemption** | ❌ Disabled (no direct burn for collateral) |
-| **Exit** | Secondary market: Swap gxUSD → USDC on AMM/CLOB |
+| **Exit** | Secondary market: Swap gxUSD → USDC on AMM/CLOB (Silent Rebalance) |
 | **Bridging** | ✅ Enabled: Burn on Solana → Mint canonical on Base via Wormhole NTT |
 
 ### sgxUSD: The Yield-Bearing Variant
@@ -157,13 +164,13 @@ Effective APY: ~8% (compounding)
 
 ### Core Loop
 
-1. **Collateral Deposit**: Users mint gxUSD with USDC, sUSDe, etc.
-2. **Liquidity Deployment**: Keeper deploys collateral into Meteora StableSwap (gxUSD/USDC) and CLOB pairs.
+1. **Collateral Deposit or Swap**: Users mint gxUSD directly OR swap USDC → gxUSD on AMM.
+2. **Liquidity Deployment**: Keeper deploys collateral into Meteora StableSwap (gxUSD/USDC) and CLOB pairs as POL.
 3. **Revenue Generation**: Pools earn trading fees; collateral earns yield.
 4. **Revenue Collection**: Keeper aggregates fees + yield → updates sgxUSD exchange rate.
-5. **Buyback Support**: If gxUSD trades below NAV, Keeper uses revenue to buy & burn gxUSD.
-6. **Value Accrual**: sgxUSD balance increases; gxUSD supply may decrease via buybacks.
-7. **User Benefit**: Holders earn passive yield; traders access deep liquidity.
+5. **Swap-to-Grow Rebalance**: If AMM accumulates excess USDC from buys, Keeper mints new gxUSD and re-deposits to restore balance—expanding vault collateral.
+6. **Silent Rebalance on Sells**: If users sell gxUSD → USDC, POL absorbs the flow; Keeper burns returned gxUSD or rebalances to maintain NAV.
+7. **User Benefit**: Holders earn passive yield via NAV appreciation; traders access deep, self-deepening liquidity.
 
 ### Why This Works Without Emissions
 
@@ -175,6 +182,25 @@ Effective APY: ~8% (compounding)
 | Mercenary capital churns | Sticky capital: yield seekers hold for compounding |
 | Complex staking/claiming UX | Simple hold-to-earn: no actions required |
 
+### Swap-to-Grow: The Key Innovation
+
+Because **gxUSD is synthetic** (protocol-mintable) and **liquidity is Protocol-Owned**, every USDC → gxUSD swap on secondary markets effectively grows the protocol:
+
+```mermaid
+graph TD
+    User[User swaps USDC → gxUSD] --> AMM[Meteora POL Pool]
+    AMM -->|USDC In, gxUSD Out| Keeper[Keeper Bot]
+    Keeper -->|Detects Excess USDC| Vault[guthix-core Vault]
+    Vault -->|Mints New gxUSD| Keeper
+    Keeper -->|Re-deposits gxUSD| AMM
+    Vault -->|Collateral Base Grows| Protocol[Protocol TVL Increases]
+    
+    style Vault fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px
+    style Keeper fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+```
+
+**Result:** Users just swap on Jupiter. The protocol grows automatically.
+
 ### Capital Efficiency Comparison
 
 ```
@@ -185,9 +211,10 @@ $1M TVL → $100K/day revenue → $50K to LPs + $50K to token emissions
 GUTHIX Model:
 $1M TVL → $100K/day revenue → $100K to sgxUSD stakers
 → No dilution → Real yield to stakers: ~10% APY
+→ Plus: Every swap grows the vault organically
 ```
 
-**Result:** GUTHIX delivers ~2x the *real* yield per dollar of revenue by eliminating emission leakage.
+**Result:** GUTHIX delivers ~2x the *real* yield per dollar of revenue by eliminating emission leakage—and grows without user friction.
 
 ---
 
@@ -207,8 +234,8 @@ $1M TVL → $100K/day revenue → $100K to sgxUSD stakers
 
 | Risk | Mitigation |
 | :--- | :--- |
-| **gxUSD Depeg (Discount)** | Keeper buybacks funded by revenue; POL depth ensures exit liquidity |
-| **Impermanent Loss (POL)** | Stable pairs only (gxUSD/USDC); IL reserved from yield buffer |
+| **gxUSD Depeg (Discount)** | Keeper buybacks funded by revenue; POL depth ensures exit liquidity; Silent Rebalance absorbs sells |
+| **Impermanent Loss (POL)** | Stable pairs only (gxUSD/USDC); IL reserved from yield buffer; dynamic allocation limits |
 | **Keeper Compromise** | PDA signing; withdrawal limits; multi-sig override; monitoring alerts |
 | **Oracle Manipulation** | Pyth + Switchboard dual feeds; TWAP pricing; deviation circuit breakers |
 | **Regulatory Scrutiny** | Frame yield as revenue share (not guaranteed return); avoid profit promises; legal review for sgxUSD |
@@ -225,8 +252,8 @@ $1M TVL → $100K/day revenue → $100K to sgxUSD stakers
 
 | Phase | Timeline | Milestones | Success Metrics |
 | :--- | :--- | :--- | :--- |
-| **Phase 1: Core Foundation** | Q2 2026 | • `guthix-core` devnet deployment <br> • SPL Token-2022 integration <br> • Keeper bot MVP <br> • Community audit | • 100+ testnet users <br> • Zero critical bugs |
-| **Phase 2: Liquidity Layer** | Q3 2026 | • Meteora AMM integration <br> • POL seed deployment ($25K–$50K) <br> • sgxUSD staking launch <br> • Mainnet beta | • $500K+ TVL <br> • <1% slippage on $10K trades <br> • 5%+ real yield APY |
+| **Phase 1: Core Foundation** | Q2 2026 | • `guthix-core` devnet deployment <br> • SPL Token-2022 integration <br> • Keeper bot MVP (Swap-to-Grow logic) <br> • Community audit | • 100+ testnet users <br> • Zero critical bugs <br> • Swap-to-Grow validated on devnet |
+| **Phase 2: Liquidity Layer** | Q3 2026 | • Meteora AMM integration <br> • POL seed deployment ($25K–$50K) <br> • sgxUSD staking launch <br> • Mainnet beta | • $500K+ TVL <br> • <1% slippage on $10K trades <br> • 5%+ real yield APY <br> • Swap-to-Grow active on mainnet |
 | **Phase 3: Multichain** | Q4 2026 | • Wormhole NTT (Solana ↔ Base) <br> • CLOB liquidity depth <br> • Jupiter aggregator integration <br> • Public analytics dashboard | • $2M+ cross-chain TVL <br> • Sub-5s bridge finality <br> • Top-10 Solana stable by volume |
 | **Phase 4: Decentralization** | Q1 2027 | • Guardian Council activation <br> • Safety Fund >5% TVL <br> • Keeper bonding (optional) <br> • Lending protocol integrations | • 3+ independent Keeper operators <br> • $10M+ cumulative fees distributed |
 | **Phase 5: Governance (Optional)** | Q3 2027+ | • GTX TGE (community vote) <br> • DAO transition <br> • veGTX fee discounts | • >20% token holder participation <br> • Zero governance attacks |
@@ -241,7 +268,7 @@ $1M TVL → $100K/day revenue → $100K to sgxUSD stakers
 | :--- | :--- | :--- |
 | **Meteora** | StableSwap AMM for gxUSD/USDC, sgxUSD/gxUSD | Low-slippage core pools; yield optimization |
 | **Wormhole** | NTT for canonical cross-chain supply | Seamless Solana ↔ Base bridging |
-| **Jupiter** | Aggregator routing for gxUSD pairs | Instant liquidity access for all Solana users |
+| **Jupiter** | Aggregator routing for gxUSD pairs | Instant liquidity access for all Solana users; Swap-to-Grow activation |
 | **Kamino/MarginFi** | gxUSD as lending collateral | Capital efficiency for borrowers; demand for gxUSD |
 | **Pyth/Switchboard** | Dual-oracle price feeds | Manipulation-resistant peg monitoring |
 
@@ -266,18 +293,17 @@ anchor test
 - Submit audit findings to security@guthix.finance
 
 ### For Liquidity Providers
-1. Provide USDC/gxUSD liquidity on Meteora
+1. Provide USDC/gxUSD liquidity on Meteora (or let POL handle it)
 2. Earn 100% of trading fees + potential sgxUSD yield
 3. No locking, no emissions, no complexity
 
 ### For Users
-1. Mint gxUSD via app.guthix.finance or Jupiter
-2. Stake for sgxUSD to earn passive yield
+1. Buy sgxUSD on Jupiter or mint directly via app.guthix.finance
+2. Hold to earn passive yield via NAV appreciation
 3. Bridge to Base via Wormhole NTT
-4. Hold, trade, or use as collateral—your choice
+4. Use as collateral, trade, or hold—your choice
 
 ### For Contributors
-- Join Discord: [discord.gg/guthix](https://discord.gg/guthix)
 - Follow updates: [@GuthixProtocol](https://twitter.com/GuthixProtocol)
 - Propose improvements via GitHub Discussions
 
@@ -296,4 +322,5 @@ This litepaper and associated documentation are licensed under the **MIT License
 ---
 
 *© 2026 Guthix Protocol. All rights reserved.*  
-*Built on Solana. Secured by minimalism.*
+*Built on Solana. Secured by minimalism.*  
+*Yield without emissions. Liquidity that builds itself.*
