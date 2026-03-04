@@ -20,11 +20,11 @@ The protocol functions as a **Vault-as-Market-Maker**: collateral is deployed in
 
 ### 🔑 Key Features
 
-*   **Minimalist Security:** Single custom Anchor program (`guthix-core`). Governance via Squads Multisig. Bridging via Wormhole NTT.
+*   **Swap-to-Grow:** Due to Protocol-Owned Liquidity (POL), every secondary market swap (USDC → gxUSD) effectively grows the vault collateral base.
 *   **Pure Real Yield:** 100% of protocol revenue (fees + collateral yield) flows to sgxUSD stakers. Zero inflationary emissions.
-*   **Abstracted Liquidity:** Protocol-Owned Liquidity (POL) deployed by off-chain Keeper. Users hold gxUSD/sgxUSD without managing LP positions.
-*   **No Direct Redemptions:** Users exit via secondary markets (AMM/CLOB). Protocol supports price via buyback & burn mechanics.
-*   **Multichain Native:** Canonical supply tracking across Solana and Base via Wormhole NTT.
+*   **Minimalist Security:** Single custom Anchor program (`guthix-core`). Governance via Squads Multisig. Bridging via Wormhole NTT.
+*   **Silent Rebalance:** User sells (gxUSD → USDC) are absorbed by POL and rebalanced by the Keeper without user friction or redemption queues.
+*   **Abstracted Liquidity:** Users hold gxUSD/sgxUSD without managing LP positions. The Keeper manages depth automatically.
 
 ---
 
@@ -42,7 +42,7 @@ graph TD
     
     Guardian[Guardian Squads] -->|Admin| Core
     Keeper[Off-Chain Keeper] -->|Monitor| Core
-    Keeper -->|Manage| Meteora[Meteora AMM / CLOB]
+    Keeper -->|Rebalance| Meteora[Meteora AMM / CLOB]
     Keeper -->|Buyback| Token
     
     Wormhole[Wormhole NTT] -->|Bridge| Base[Base Hub]
@@ -60,8 +60,8 @@ graph TD
 | **Governance** | Squads Protocol (Multisig) | Parameter updates, Emergency pauses, Keeper authorization |
 | **Token** | SPL Token-2022 | gxUSD standard (metadata, extensions); sgxUSD as receipt token |
 | **Bridging** | Wormhole NTT | Canonical lock/mint across Solana ↔ Base |
-| **Liquidity** | Meteora StableSwap + Solana CLOB | Protocol-owned liquidity depth for core and bridge pairs |
-| **Maintenance** | Off-Chain Keeper (Rust/TS) | Buybacks, LP management, NAV monitoring, revenue collection |
+| **Liquidity** | Meteora StableSwap + Solana CLOB | Protocol-Owned Liquidity (POL) for core and bridge pairs |
+| **Maintenance** | Off-Chain Keeper (Rust/TS) | Buybacks, LP rebalancing, NAV monitoring, revenue collection |
 
 ---
 
@@ -117,7 +117,7 @@ guthix-core/
 │   └── guthix-core/       # ONLY custom program (Vault + Config + Staking)
 ├── clients/
 │   ├── sdk/               # TypeScript SDK for interaction
-│   └── keeper/            # Rust/TS bot for buyback/LP logic
+│   └── keeper/            # Rust/TS bot for buyback/LP rebalancing
 ├── scripts/
 │   ├── deploy-squads.ts   # Setup Guardian Multisig
 │   ├── deploy-ntt.ts      # Configure Wormhole NTT
@@ -139,10 +139,10 @@ guthix-core/
 // guthix-core program instructions
 pub enum Instruction {
     Initialize,           // Setup vault, token mint, guardian
-    Deposit,              // Lock collateral → Mint gxUSD
+    Deposit,              // Lock collateral → Mint gxUSD (Primary Market)
     Stake,                // Deposit gxUSD → Mint sgxUSD
     Unstake,              // Burn sgxUSD → Withdraw gxUSD + yield
-    WithdrawCollateral,   // Keeper-only: Unlock collateral for buybacks
+    WithdrawCollateral,   // Keeper-only: Unlock collateral for rebalancing
     UpdateConfig,         // Guardian-only: Adjust fees, pause, keeper address
     Pause,                // Guardian-only: Emergency halt
 }
@@ -165,7 +165,7 @@ import { GuthixSDK } from '@guthix-protocol/sdk';
 
 const sdk = new GuthixSDK({ cluster: 'mainnet-beta' });
 
-// Mint gxUSD with USDC collateral
+// Primary Market: Mint gxUSD with USDC collateral
 const tx = await sdk.mint({
   collateralMint: USDC_MINT,
   collateralAmount: 1000_000_000, // 1000 USDC (6 decimals)
@@ -179,7 +179,7 @@ await sdk.sendTransaction(tx);
 ### Example: Staking for sgxUSD
 
 ```typescript
-// Stake gxUSD to earn yield
+// Stake gxUSD to earn yield (NAV appreciation)
 const tx = await sdk.stake({
   gxUsdAmount: 1000_000_000, // 1000 gxUSD
   owner: wallet.publicKey,
@@ -193,7 +193,7 @@ await sdk.sendTransaction(tx);
 
 ## 🤖 Keeper Bot
 
-The off-chain Keeper manages protocol revenue, buybacks, and LP positions.
+The off-chain Keeper manages protocol revenue, buybacks, and **POL Rebalancing**.
 
 ### Setup
 
@@ -212,9 +212,12 @@ keeper_keypair = "~/.config/solana/keeper.json"
 guthix_core_program = "GUTHIX_PROGRAM_ID"
 
 [strategy]
-buyback_threshold = 0.98  # Trigger buyback if price < 98% of NAV
-max_buyback_per_epoch = 10000_000_000  # 10,000 gxUSD limit
-lp_allocation_pct = 50  # Max 50% of TVL in LP positions
+# Rebalance Trigger: If AMM USDC > 55% of pool value
+rebalance_threshold = 0.55  
+# Buyback Trigger: If market price < 98% of NAV
+buyback_threshold = 0.98  
+# Max 50% of TVL in LP positions
+lp_allocation_pct = 50  
 ```
 
 ### Running the Keeper
@@ -233,9 +236,18 @@ cargo run --release -- --config config.toml --monitor
 | :--- | :--- | :--- |
 | **Collect Trading Fees** | Every epoch | Meteora/CLOB fee accrual |
 | **Update sgxUSD Exchange Rate** | Every epoch | New yield available |
+| **POL Rebalance (Swap-to-Grow)** | As needed | AMM USDC ratio > threshold |
 | **Buyback gxUSD** | As needed | Price < NAV * threshold |
-| **Rebalance LP Positions** | Daily | Allocation drift > 5% |
 | **Health Check** | Every block | Monitor vault solvency |
+
+### POL Rebalancing Logic (Swap-to-Grow)
+When users buy gxUSD on secondary markets (USDC → gxUSD), USDC flows into the Protocol-Owned Liquidity pool. The Keeper detects excess USDC and rebalances:
+
+1.  **Withdraw** excess USDC from AMM.
+2.  **Mint** new gxUSD via Vault (increasing collateral base).
+3.  **Re-deposit** gxUSD into AMM to restore liquidity depth.
+
+**Result:** Secondary swaps automatically grow the protocol vault.
 
 ---
 
@@ -280,7 +292,7 @@ yarn ts-node scripts/init-core.ts --cluster devnet
 | **Total Collateral** | `/api/collateral` | Sum of all locked collateral (USD) |
 | **sgxUSD Exchange Rate** | `/api/exchange-rate` | sgxUSD → gxUSD conversion rate |
 | **Protocol Revenue** | `/api/revenue` | 24h/7d/30d fee + yield revenue |
-| **Keeper Activity** | `/api/keeper` | Last buyback, LP rebalance, health check |
+| **Keeper Activity** | `/api/keeper` | Last rebalance, buyback, health check |
 
 ### On-Chain Verification
 
@@ -379,5 +391,5 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ---
 
-*© 2026 Guthix Protocol. All rights reserved.*  
+*© 2026 Guthix Protocol Foundation. All rights reserved.*  
 *Built on Solana. Secured by minimalism.*
