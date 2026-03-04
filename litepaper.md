@@ -295,5 +295,5 @@ This litepaper and associated documentation are licensed under the **MIT License
 
 ---
 
-*© 2026 Guthix Protocol Foundation. All rights reserved.*  
+*© 2026 Guthix Protocol. All rights reserved.*  
 *Built on Solana. Secured by minimalism.*
