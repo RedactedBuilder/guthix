@@ -1,9 +1,9 @@
 # GUTHIX Protocol
 
 > **The Synthetic Liquidity Standard**  
-> **Version:** 1.0.0 (Protocol-First)  
+> **Version:** 1.1.0 (Pure Real Yield)  
 > **Status:** 🚧 In Development  
-> **Network:** Solana (Operations) | Base (Governance Hub)
+> **Network:** Solana (Primary) | Base (Bridge)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Solana](https://img.shields.io/badge/Solana-Anchor-9945FF.svg?logo=solana)](https://solana.com)
@@ -14,52 +14,54 @@
 
 ## 📖 Overview
 
-**GUTHIX** is a decentralized liquidity protocol designed to unify fragmented stablecoin markets. By aggregating diverse stable assets (USDC, sUSDe, syrupUSDC) into a **Unified Liquidity Reserve**, Guthix mints **gxUSD**, a synthetic stablecoin pegged 1:1 to the USD.
+**GUTHIX** is a minimalist decentralized liquidity protocol that unifies fragmented stablecoin markets through a revenue-first architecture. Unlike traditional stablecoin protocols, GUTHIX operates without direct redemptions, inflationary emissions, or complex governance tokens.
 
-Unlike traditional protocols, Guthix operates without an inflationary governance token in v1.0.0. We focus on **Real Yield** for liquidity providers, **Hybrid Liquidity** (AMM + CLOB), and **Multichain Accessibility** (Wormhole + LayerZero routing).
+The protocol functions as a **Vault-as-Market-Maker**: collateral is deployed into deep liquidity pools, and 100% of protocol revenue flows directly to **sgxUSD** stakers via NAV appreciation.
 
 ### 🔑 Key Features
 
-*   **Synthetic Stablecoin (gxUSD):** Fully backed by a basket of yield-bearing and standard stablecoins.
-*   **Hybrid Liquidity Model:** 
-    *   **Meteora StableSwap AMM** for core peg stability (gxUSD/USDC).
-    *   **Solana CLOB** for efficient bridge access pairs (gxUSD/USDT0).
-*   **Yield Flywheel:** 100% of collateral yield is reinvested to deepen exotic liquidity pools (whUSDC, axlUSDC), reducing slippage and driving volume.
-*   **Real Yield Economics:** 100% of swap/trading fees flow directly to Liquidity Providers. No inflationary token emissions.
-*   **Multichain Native:** 
-    *   **Wormhole NTT (Lock/Unlock):** Canonical supply tracking on Base.
-    *   **LayerZero Access:** Via deep gxUSD/USDT0 CLOB liquidity.
-*   **Tokenless Governance:** Multi-sig → Guardian Council → DAO (Phase 3).
+*   **Minimalist Security:** Single custom Anchor program (`guthix-core`). Governance via Squads Multisig. Bridging via Wormhole NTT.
+*   **Pure Real Yield:** 100% of protocol revenue (fees + collateral yield) flows to sgxUSD stakers. Zero inflationary emissions.
+*   **Abstracted Liquidity:** Protocol-Owned Liquidity (POL) deployed by off-chain Keeper. Users hold gxUSD/sgxUSD without managing LP positions.
+*   **No Direct Redemptions:** Users exit via secondary markets (AMM/CLOB). Protocol supports price via buyback & burn mechanics.
+*   **Multichain Native:** Canonical supply tracking across Solana and Base via Wormhole NTT.
 
 ---
 
 ## 🏗 Architecture
 
-### Hub-and-Spoke Model
+### System Diagram
 
 ```mermaid
 graph TD
-    Base[Base (Hub)] -->|Wormhole NTT Lock/Unlock| Solana[Solana (Spoke)]
-    Solana -->|Meteora AMM| CorePools[Core Pools: gxUSD/USDC]
-    Solana -->|Meteora AMM | YieldPools[Yield Pools: sUSDe/gxUSD]
-    Solana -->|CLOB | BridgePools[Bridge Pools: gxUSD/USDT0]
-    YieldPools -->|Yield Reinvestment| BridgePools
-    Base -->|Governance| MultiSig[Foundation Multi-sig]
+    User[User] -->|Swap/Mint| Interface[UI / Jupiter]
+    Interface -->|IXs| Core[guthix-core Program]
+    
+    Core -->|Lock| Vault[Collateral Vault]
+    Core -->|Mint| Token[SPL Token-2022: gxUSD]
+    
+    Guardian[Guardian Squads] -->|Admin| Core
+    Keeper[Off-Chain Keeper] -->|Monitor| Core
+    Keeper -->|Manage| Meteora[Meteora AMM / CLOB]
+    Keeper -->|Buyback| Token
+    
+    Wormhole[Wormhole NTT] -->|Bridge| Base[Base Hub]
+    
+    style Core fill:#f9f9f9,stroke:#333,stroke-width:4px
+    style Keeper fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    style Guardian fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
 ```
 
-### Liquidity Venues
+### Component Breakdown
 
-| Venue | Type | Use Case | Configuration |
-| :--- | :--- | :--- | :--- |
-| **Meteora** | StableSwap AMM | Core Stability & Collateral Arb | Low slippage near peg |
-| **Solana CLOB** | Central Limit Order Book | Bridge Access (USDT0, whUSDC) | Directional limit orders |
-
-### Collateral Framework (v1.0.0)
-
-*   **Tier 1 (Core):** USDC (Native)
-*   **Tier 1.5 (Yield):** sUSDe (Ethena), syrupUSDC (Syrup Finance)
-*   **Tier 2 (Trading Pair Only):** USDT0 (LayerZero), whUSDC (Wormhole)
-*   **Reserve Safety Fund:** Funded by 50% of Mint/Redeem fees. Target: 5% of TVL.
+| Component | Implementation | Responsibility |
+| :--- | :--- | :--- |
+| **Core Logic** | `guthix-core` (Anchor) | Minting, Collateral Locking, Config, sgxUSD Staking |
+| **Governance** | Squads Protocol (Multisig) | Parameter updates, Emergency pauses, Keeper authorization |
+| **Token** | SPL Token-2022 | gxUSD standard (metadata, extensions); sgxUSD as receipt token |
+| **Bridging** | Wormhole NTT | Canonical lock/mint across Solana ↔ Base |
+| **Liquidity** | Meteora StableSwap + Solana CLOB | Protocol-owned liquidity depth for core and bridge pairs |
+| **Maintenance** | Off-Chain Keeper (Rust/TS) | Buybacks, LP management, NAV monitoring, revenue collection |
 
 ---
 
@@ -77,7 +79,7 @@ graph TD
 
 1.  **Clone the Repository**
     ```bash
-    git clone https://github.com/guthix-protocol/guthix-core.git
+    git clone https://github.com/guthix-protocol/guthix-core.git  
     cd guthix-core
     ```
 
@@ -111,46 +113,211 @@ graph TD
 
 ```text
 guthix-core/
-├── programs/               # Solana Anchor Programs
-│   ├── guthix-vault/       # Collateral management & mint/burn
-│   ├── guthix-ntt/         # Wormhole NTT integration
-│   └── guthix-governance/  # Multi-sig & DAO logic (Future)
-├── client/                 # TypeScript SDK & Frontend
-│   ├── src/
-│   │   ├── sdk/            # Protocol interaction SDK
-│   │   ├── components/     # React components
-│   │   └── utils/          # Helpers (Oracle, Fee calc)
-│   └── tests/              # E2E Tests
-├── docs/                   # Documentation
-│   ├── litepaper.pdf       # Latest Litepaper
-│   └── api.md              # API Reference
-├── scripts/                # Deployment & Maintenance Scripts
-├── Anchor.toml             # Anchor Configuration
-└── README.md               # This file
+├── programs/
+│   └── guthix-core/       # ONLY custom program (Vault + Config + Staking)
+├── clients/
+│   ├── sdk/               # TypeScript SDK for interaction
+│   └── keeper/            # Rust/TS bot for buyback/LP logic
+├── scripts/
+│   ├── deploy-squads.ts   # Setup Guardian Multisig
+│   ├── deploy-ntt.ts      # Configure Wormhole NTT
+│   └── init-core.ts       # Initialize Vault Program
+├── tests/
+│   └── guthix-core.test.ts
+├── Anchor.toml
+├── Cargo.toml
+└── README.md
 ```
 
 ---
 
-## 🗓 Roadmap
+## 🛠 Smart Contract Interface
 
-| Phase | Timeline | Milestones |
+### Program Instructions
+
+```rust
+// guthix-core program instructions
+pub enum Instruction {
+    Initialize,           // Setup vault, token mint, guardian
+    Deposit,              // Lock collateral → Mint gxUSD
+    Stake,                // Deposit gxUSD → Mint sgxUSD
+    Unstake,              // Burn sgxUSD → Withdraw gxUSD + yield
+    WithdrawCollateral,   // Keeper-only: Unlock collateral for buybacks
+    UpdateConfig,         // Guardian-only: Adjust fees, pause, keeper address
+    Pause,                // Guardian-only: Emergency halt
+}
+```
+
+### Account Structure
+
+| Account | Type | Authority | Description |
+| :--- | :--- | :--- | :--- |
+| `Vault` | PDA | Program | Holds all collateral (USDC, sUSDe, etc.) |
+| `Config` | PDA | Guardian | Protocol parameters (fees, limits, keeper address) |
+| `State` | PDA | Program | Global state (TVL, supply, NAV, paused status) |
+| `UserPosition` | PDA | User | Tracks user's sgxUSD balance & accrual |
+| `Keeper` | PDA | Guardian | Authorized keeper for revenue operations |
+
+### Example: Minting gxUSD (TypeScript SDK)
+
+```typescript
+import { GuthixSDK } from '@guthix-protocol/sdk';
+
+const sdk = new GuthixSDK({ cluster: 'mainnet-beta' });
+
+// Mint gxUSD with USDC collateral
+const tx = await sdk.mint({
+  collateralMint: USDC_MINT,
+  collateralAmount: 1000_000_000, // 1000 USDC (6 decimals)
+  minGxUsdOut: 995_000_000,      // Slippage protection
+  owner: wallet.publicKey,
+});
+
+await sdk.sendTransaction(tx);
+```
+
+### Example: Staking for sgxUSD
+
+```typescript
+// Stake gxUSD to earn yield
+const tx = await sdk.stake({
+  gxUsdAmount: 1000_000_000, // 1000 gxUSD
+  owner: wallet.publicKey,
+});
+
+await sdk.sendTransaction(tx);
+// sgxUSD balance will accrue yield automatically
+```
+
+---
+
+## 🤖 Keeper Bot
+
+The off-chain Keeper manages protocol revenue, buybacks, and LP positions.
+
+### Setup
+
+```bash
+cd clients/keeper
+cargo build --release
+```
+
+### Configuration
+
+```toml
+# keeper/config.toml
+[keeper]
+cluster = "mainnet-beta"
+keeper_keypair = "~/.config/solana/keeper.json"
+guthix_core_program = "GUTHIX_PROGRAM_ID"
+
+[strategy]
+buyback_threshold = 0.98  # Trigger buyback if price < 98% of NAV
+max_buyback_per_epoch = 10000_000_000  # 10,000 gxUSD limit
+lp_allocation_pct = 50  # Max 50% of TVL in LP positions
+```
+
+### Running the Keeper
+
+```bash
+# Start keeper bot
+cargo run --release -- --config config.toml
+
+# Run with monitoring dashboard
+cargo run --release -- --config config.toml --monitor
+```
+
+### Keeper Responsibilities
+
+| Task | Frequency | Trigger |
 | :--- | :--- | :--- |
-| **Phase 1: Solana Foundation** | Q1 2024 | • Core Vault & Mint/Burn <br> • Meteora AMM Integration <br> • Devnet Audit |
-| **Phase 2: Base Hub** | Q2 2024 | • Wormhole NTT (Lock/Unlock) <br> • Base Governance Hub <br> • Mainnet Beta |
-| **Phase 3: Multichain** | Q3 2024 | • CLOB Liquidity (USDT0) <br> • Aggregator Integrations (Jupiter, LI.FI) <br> • Yield Reinvestment Automation |
-| **Phase 4: Decentralization** | Q4 2024 | • Safety Fund > 5% TVL <br> • DAO Transition <br> • Admin Key Removal |
+| **Collect Trading Fees** | Every epoch | Meteora/CLOB fee accrual |
+| **Update sgxUSD Exchange Rate** | Every epoch | New yield available |
+| **Buyback gxUSD** | As needed | Price < NAV * threshold |
+| **Rebalance LP Positions** | Daily | Allocation drift > 5% |
+| **Health Check** | Every block | Monitor vault solvency |
+
+---
+
+## 🧪 Testing
+
+### Unit Tests
+
+```bash
+# Run all tests
+anchor test
+
+# Run specific test suite
+anchor test --skip-deploy --skip-local-validator -- tests/guthix-core.test.ts
+```
+
+### Test Coverage
+
+```bash
+# Generate coverage report
+cargo llvm-cov --lcov --output-path lcov.info
+```
+
+### Devnet Deployment
+
+```bash
+# Deploy to devnet
+anchor deploy --provider.cluster devnet
+
+# Initialize protocol
+yarn ts-node scripts/init-core.ts --cluster devnet
+```
+
+---
+
+## 📊 Monitoring & Analytics
+
+### Key Metrics Dashboard
+
+| Metric | Endpoint | Description |
+| :--- | :--- | :--- |
+| **NAV per gxUSD** | `/api/nav` | Current net asset value per token |
+| **Total Collateral** | `/api/collateral` | Sum of all locked collateral (USD) |
+| **sgxUSD Exchange Rate** | `/api/exchange-rate` | sgxUSD → gxUSD conversion rate |
+| **Protocol Revenue** | `/api/revenue` | 24h/7d/30d fee + yield revenue |
+| **Keeper Activity** | `/api/keeper` | Last buyback, LP rebalance, health check |
+
+### On-Chain Verification
+
+All protocol state is publicly verifiable on Solana:
+
+```bash
+# View vault collateral
+solana account <VAULT_PDA> --output json
+
+# View protocol config
+solana account <CONFIG_PDA> --output json
+
+# View sgxUSD exchange rate
+solana account <STATE_PDA> --output json
+```
 
 ---
 
 ## 🛡 Security
 
-Security is our highest priority. Guthix employs a defense-in-depth strategy.
+### Defense-in-Depth Strategy
 
-*   **Audits:** All smart contracts will be audited by recognized firms (e.g., OtterSec, Neodyme) before mainnet launch.
-*   **Oracles:** Dual-oracle system (Pyth + Switchboard) for price feeds and peg monitoring.
-*   **Circuit Breakers:** On-chain monitors can pause minting if oracle deviations exceed thresholds.
-*   **Safety Fund:** 50% of Mint/Redeem fees accrue to an insurance fund to cover potential shortfalls.
-*   **Bug Bounty:** A bug bounty program will be launched via Immunefi prior to TGE.
+| Layer | Implementation | Purpose |
+| :--- | :--- | :--- |
+| **Minimal Code** | Single custom program (`guthix-core`) | Reduce audit surface; simplify verification |
+| **Standard Dependencies** | Squads, Wormhole, SPL Token-2022 | Leverage battle-tested, audited infrastructure |
+| **Off-Chain Keeper** | Logic upgradable without contract redeployment | Isolate complex logic; enable rapid iteration |
+| **Guardian Multisig** | 3-of-5 trusted signers | Human oversight for black-swan events |
+| **Transparency** | Real-time NAV, collateral proofs on-chain | Enable community verification |
+
+### Audit Status
+
+| Audit Firm | Status | Report |
+| :--- | :--- | :--- |
+| **Community Review** | ✅ Complete | [GitHub Issues](https://github.com/guthix-protocol/guthix-core/issues) |
+| **OtterSec** | 🚧 In Progress | Expected Q3 2026 |
+| **Immunefi Bounty** | 🚧 Planned | Post-mainnet launch |
 
 ### Reporting a Vulnerability
 
@@ -168,7 +335,26 @@ We welcome contributions from the community!
 4.  **Push to Branch** (`git push origin feature/amazing-feature`)
 5.  **Open a Pull Request**
 
-Please read our [Contributing Guidelines](./CONTRIBUTING.md) (Coming Soon) for details on our code of conduct and development process.
+### Contribution Guidelines
+
+*   **Code Style:** Follow Rust/Anchor best practices. Run `cargo fmt` before committing.
+*   **Tests:** All new features must include unit and integration tests.
+*   **Documentation:** Update README and inline docs for any new instructions or accounts.
+*   **Security:** No PRs without security consideration. Tag `@guthix-security` for review.
+
+Please read our [Contributing Guidelines](./CONTRIBUTING.md) for details on our code of conduct and development process.
+
+---
+
+## 🗓 Roadmap
+
+| Phase | Timeline | Milestones |
+| :--- | :--- | :--- |
+| **Phase 1: Core Foundation** | Q2 2026 | • `guthix-core` devnet deployment <br> • SPL Token-2022 integration <br> • Keeper bot MVP |
+| **Phase 2: Liquidity Layer** | Q3 2026 | • Meteora AMM integration <br> • POL seed deployment <br> • sgxUSD staking launch <br> • Mainnet beta |
+| **Phase 3: Multichain** | Q4 2026 | • Wormhole NTT (Solana ↔ Base) <br> • CLOB liquidity depth <br> • Jupiter aggregator integration |
+| **Phase 4: Decentralization** | Q1 2027 | • Guardian Council activation <br> • Safety Fund >5% TVL <br> • Keeper bonding (optional) |
+| **Phase 5: Governance (Optional)** | Q3 2027+ | • GTX TGE (community vote) <br> • DAO transition |
 
 ---
 
@@ -180,7 +366,18 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ## ⚠️ Disclaimer
 
-*This document is for informational purposes only and does not constitute financial advice, investment recommendations, or an offer to sell or solicitation of an offer to buy any securities. GUTHIX is a decentralized protocol. Participants acknowledge that they are using the software at their own risk. Cryptocurrency investments are volatile and high-risk. Please consult a qualified financial advisor before making any investment decisions.*
+*This repository is for informational purposes only and does not constitute financial advice, investment recommendations, or an offer to sell or solicitation of an offer to buy any securities. GUTHIX is a decentralized protocol. Participants acknowledge that they are using the software at their own risk. Cryptocurrency investments are volatile and high-risk. Please consult a qualified financial advisor before making any investment decisions.*
 
-*© 2026 Guthix Protocol Foundation. All rights reserved.*
-```
+---
+
+## 📞 Contact
+
+*   **Website:** [www.guthix.finance](https://www.guthix.finance)
+*   **Twitter:** [@GuthixProtocol](https://twitter.com/GuthixProtocol)
+*   **Email:** [research@guthix.finance](mailto:research@guthix.finance)
+*   **Security:** [security@guthix.finance](mailto:security@guthix.finance)
+
+---
+
+*© 2026 Guthix Protocol. All rights reserved.*  
+*Built on Solana. Secured by minimalism.*
