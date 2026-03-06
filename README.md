@@ -1,7 +1,7 @@
 # GUTHIX Protocol
 
-> **The Yield Vault Standard**
-> **Version:** 2.1.0
+> **The Yield-Bearing Liquidity Hub**
+> **Version:** 3.0.0
 > **Status:** 🚧 In Development
 > **Network:** Solana (Primary) | Base (Bridge)
 
@@ -14,19 +14,22 @@
 
 ## 📖 Overview
 
-**GUTHIX** is a minimalist decentralized liquidity protocol built around a single token: **sgxUSD**. Users swap USDC in, hold, and appreciate. That is the entire user experience.
+**GUTHIX** is a minimalist decentralized liquidity protocol and the first yield-bearing liquidity hub for the Solana stablecoin ecosystem. It is built around a single token: **sgxUSD**.
 
-sgxUSD has yield because it is always paired against yield-bearing assets. This is not a feature — it is the foundation. Protocol-Owned Liquidity (POL) is deployed into StableSwap pools pairing sgxUSD against sUSDe, syrupUSDC, and USDY. Both sides of every yield pool appreciate natively, compounding together without harvesting, without conversion, and without yield leakage.
+sgxUSD generates yield from five structurally uncorrelated sources simultaneously — Ethena funding rates, Maple credit yield, Ondo RWA yield, and trading fees from bridge arbitrage across Wormhole-bridged stablecoin pairs. No single source dominates. If one yield source compresses, the others carry the basket.
+
+Users swap in, hold, and appreciate. That is the entire user experience.
 
 There are no governance tokens. No token emissions. No staking UI. No redemption queues. No synthetic units. One token, one action, passive yield.
 
 ### 🔑 Key Features
 
-- **Yield-Bearing Foundation:** sgxUSD is paired against yield-bearing assets from day one. Native collateral yield compounds directly into sgxUSD NAV without harvesting.
-- **Pure Real Yield:** 100% of protocol revenue (collateral yield + trading fees) flows to sgxUSD holders via NAV appreciation. Zero emissions. Zero dilution.
-- **Swap-to-Grow:** Excess USDC from secondary market buys routes directly to vault collateral, raising sgxUSD NAV instantly for all holders.
-- **Silent Rebalance:** User exits are absorbed by POL and rebalanced by an off-chain Keeper — no redemption queues, no user friction.
+- **Yield-Bearing Foundation:** sgxUSD is paired against yield-bearing assets from day one. Native collateral yield compounds directly into sgxUSD NAV — no harvesting, no conversion, no yield leakage.
+- **Bridge Liquidity Hub:** Deep StableSwap pools for Wormhole-bridged USDC variants from Ethereum, BNB Chain, and Polygon — capturing bridge arb fees as a structurally distinct yield source.
+- **Diversified Yield:** Five uncorrelated yield sources in a single token. Funding rates, credit yield, RWA yield, and bridge arb fees compound simultaneously.
+- **Pure Real Yield:** 100% of all revenue flows to sgxUSD holders via NAV appreciation. Zero emissions. Zero dilution.
 - **Minimalist Security:** Single custom Anchor program (`guthix-core`). Governance via Squads Multisig. Bridging via Wormhole NTT.
+- **Cross-Chain:** sgxUSD bridges canonically to Base via Wormhole NTT — accessible to EVM users without manual bridging.
 
 ---
 
@@ -45,7 +48,7 @@ graph TD
     Guardian[Guardian Squads] -->|Admin| Core
     Keeper[Off-Chain Keeper] -->|Monitor & Rebalance| Core
     Keeper -->|Deploy POL| Meteora[Meteora StableSwap Pools]
-    Keeper -->|Route Excess USDC| Vault
+    Keeper -->|Route Fees + Excess USDC| Vault
 
     Wormhole[Wormhole NTT] -->|Bridge| Base[Base Hub]
 
@@ -62,17 +65,21 @@ graph TD
 | **Governance** | Squads Protocol (Multisig) | Parameter updates, emergency pauses, Keeper authorization |
 | **Token** | SPL Token | sgxUSD vault token |
 | **Bridging** | Wormhole NTT | Canonical lock/mint across Solana ↔ Base |
-| **Liquidity** | Meteora StableSwap | Protocol-Owned Liquidity across all pool pairs |
+| **Liquidity** | Meteora StableSwap | Protocol-Owned Liquidity across all pool tiers |
 | **Maintenance** | Off-Chain Keeper (Rust/TS) | POL rebalancing, NAV updates, Swap-to-Grow routing, pool monitoring |
 
-### Pool Architecture
+### Three-Tier Pool Architecture
 
-| Pool | Role | Swap Fee |
-| :--- | :--- | :--- |
-| **sgxUSD / sUSDe** | Yield engine — Ethena funding rate yield | 0.10% |
-| **sgxUSD / syrupUSDC** | Yield engine — Maple credit yield | 0.10% |
-| **sgxUSD / USDY** | Yield engine — Ondo RWA yield | 0.10% |
-| **sgxUSD / USDC** | Entry / exit ramp only | 0.05% |
+| Tier | Pool | Role | Swap Fee |
+| :--- | :--- | :--- | :--- |
+| **Yield** | sgxUSD / sUSDe | Ethena funding rate yield | 0.10% |
+| **Yield** | sgxUSD / syrupUSDC | Maple credit yield | 0.10% |
+| **Yield** | sgxUSD / USDY | Ondo RWA yield | 0.10% |
+| **Bridge** | sgxUSD / whUSDC.e | Ethereum bridge arb fees | 0.20% |
+| **Bridge** | sgxUSD / whUSDC.bnb | BNB Chain bridge arb fees | 0.20% |
+| **Bridge** | sgxUSD / whUSDC.poly | Polygon bridge arb fees | 0.20% |
+| **Bridge** | sgxUSD / USDT0 | Cross-chain USDT arb fees | 0.20% |
+| **Ramp** | sgxUSD / USDC | Entry / exit only | 0.05% |
 
 ---
 
@@ -165,12 +172,12 @@ pub enum Instruction {
 
 | Account | Type | Authority | Description |
 | :--- | :--- | :--- | :--- |
-| `Vault` | PDA | Program | Holds all collateral (sUSDe, syrupUSDC, USDY, USDC) |
-| `Config` | PDA | Guardian | Protocol parameters (fees, limits, keeper address) |
-| `State` | PDA | Program | Global state (TVL, supply, NAV, paused status) |
-| `Keeper` | PDA | Guardian | Authorized keeper for NAV and rebalancing operations |
+| `Vault` | PDA | Program | Holds all collateral (sUSDe, syrupUSDC, USDY, whUSDC variants, USDC) |
+| `Config` | PDA | Guardian | Protocol parameters (fees, limits, keeper address, pool thresholds) |
+| `State` | PDA | Program | Global state (TVL, sgxUSD supply, NAV, paused status) |
+| `Keeper` | PDA | Guardian | Authorized keeper for NAV updates and rebalancing operations |
 
-### Example: Depositing USDC for sgxUSD (TypeScript SDK)
+### Example: Depositing for sgxUSD (TypeScript SDK)
 
 ```typescript
 import { GuthixSDK } from '@guthix-protocol/sdk';
@@ -186,7 +193,7 @@ const tx = await sdk.deposit({
 });
 
 await sdk.sendTransaction(tx);
-// sgxUSD balance appreciates automatically from this point
+// sgxUSD appreciates automatically across five yield sources from this point
 ```
 
 ### Example: Exiting via Secondary Market
@@ -205,11 +212,30 @@ const route = await jupiter.computeRoutes({
 await jupiter.exchange({ routeInfo: route.routesInfos[0] });
 ```
 
+### Example: Bridging to Base
+
+```typescript
+// Bridge sgxUSD from Solana to Base via Wormhole NTT
+import { WormholeNTT } from '@wormhole-foundation/sdk';
+
+const ntt = new WormholeNTT({ sourceChain: 'solana', targetChain: 'base' });
+
+const tx = await ntt.transfer({
+  tokenMint: SGXUSD_MINT,
+  amount: 1000_000_000,
+  recipient: evmWalletAddress,
+  owner: wallet.publicKey,
+});
+
+await sdk.sendTransaction(tx);
+// sgxUSD minted canonically on Base — yield continues to accrue
+```
+
 ---
 
 ## 🤖 Keeper Bot
 
-The off-chain Keeper manages POL deployment, NAV updates, and Swap-to-Grow routing. It requires no privileged minting authority — all vault operations are PDA-signed with per-epoch withdrawal limits.
+The off-chain Keeper manages POL deployment across all three tiers, NAV updates, Swap-to-Grow routing, and bridge pool monitoring. All vault operations are PDA-signed with per-epoch withdrawal limits — the Keeper holds no privileged mint authority.
 
 ### Setup
 
@@ -230,10 +256,14 @@ guthix_core_program = "GUTHIX_PROGRAM_ID"
 [strategy]
 # Swap-to-Grow: route excess USDC to vault if USDC > 55% of sgxUSD/USDC pool
 swap_to_grow_threshold = 0.55
-# Silent Rebalance: rebalance POL if sgxUSD > 60% of any yield pool
+# Silent Rebalance: rebalance POL if sgxUSD > 60% of any pool
 rebalance_threshold = 0.60
-# Maximum POL allocation as % of TVL per pool
-max_pool_allocation_pct = 35
+# Max POL allocation per yield pool (% of TVL)
+max_yield_pool_allocation_pct = 20
+# Max POL allocation per bridge pool (% of TVL)
+max_bridge_pool_allocation_pct = 10
+# Bridge pool depeg alert threshold
+bridge_depeg_threshold = 0.995
 ```
 
 ### Running the Keeper
@@ -253,12 +283,13 @@ cargo run --release -- --config config.toml --monitor
 | **Update sgxUSD NAV** | Every epoch | Collateral yield accrual + fee collection |
 | **Swap-to-Grow** | As needed | Excess USDC in sgxUSD/USDC pool > threshold |
 | **Silent Rebalance** | As needed | sgxUSD sell pressure exceeds POL depth |
-| **Pool Health Monitor** | Every block | Collateral asset depeg detection |
+| **Bridge Fee Collection** | Every epoch | Tier 2 pool trading fee accrual |
+| **Bridge Pool Monitoring** | Every block | whUSDC variant depeg detection |
 | **Vault Solvency Check** | Every block | NAV vs. total sgxUSD supply |
 
 ### Swap-to-Grow Logic
 
-When users buy sgxUSD on secondary markets (USDC → sgxUSD), USDC accumulates in the POL pool. The Keeper detects excess USDC and routes it to the vault:
+When users buy sgxUSD on secondary markets (USDC → sgxUSD), USDC accumulates in the Tier 3 POL pool. The Keeper routes it to the vault:
 
 1. **Detect** excess USDC in sgxUSD/USDC pool above threshold
 2. **Withdraw** excess USDC from POL position
@@ -308,8 +339,9 @@ yarn ts-node scripts/init-core.ts --cluster devnet
 | :--- | :--- | :--- |
 | **NAV per sgxUSD** | `/api/nav` | Current net asset value per token |
 | **Total Collateral** | `/api/collateral` | Sum of all locked collateral (USD) |
-| **Collateral Basket** | `/api/basket` | Per-asset allocation (sUSDe / syrupUSDC / USDY / USDC) |
-| **Protocol Revenue** | `/api/revenue` | 24h/7d/30d fee + collateral yield |
+| **Yield Basket** | `/api/basket` | Per-asset allocation across all tiers |
+| **Bridge Volume** | `/api/bridge` | 24h/7d volume per Tier 2 pool |
+| **Protocol Revenue** | `/api/revenue` | 24h/7d/30d fee + collateral yield by source |
 | **Keeper Activity** | `/api/keeper` | Last rebalance, Swap-to-Grow, NAV update |
 
 ### On-Chain Verification
@@ -335,11 +367,11 @@ solana account <STATE_PDA> --output json
 
 | Layer | Implementation | Purpose |
 | :--- | :--- | :--- |
-| **Minimal Code** | Single custom program (`guthix-core`); 7 instructions | Smallest possible audit surface |
+| **Minimal Code** | Single custom program (`guthix-core`); 7 instructions; single token | Smallest possible audit surface |
 | **Standard Dependencies** | Squads, Wormhole, SPL Token, Meteora | Battle-tested, audited infrastructure only |
 | **Off-Chain Keeper** | Logic upgradable without redeployment; PDA-signed withdrawals | Isolate complexity; enable rapid iteration |
-| **Guardian Multisig** | 3-of-5 trusted signers; emergency pause | Human oversight for black-swan events |
-| **Transparency** | Real-time NAV, collateral proofs on-chain | Community verification; reduced information asymmetry |
+| **Guardian Multisig** | 3-of-5 trusted signers; emergency pause per pool | Human oversight for black-swan events |
+| **Transparency** | Real-time NAV, collateral proofs, Keeper activity on-chain | Community verification; reduced information asymmetry |
 
 ### Audit Status
 
@@ -380,9 +412,9 @@ Please read our [Contributing Guidelines](./CONTRIBUTING.md) for details on our 
 
 | Phase | Timeline | Milestones |
 | :--- | :--- | :--- |
-| **Phase 1: Core Foundation** | Q2 2026 | • `guthix-core` devnet deployment <br> • SPL Token integration <br> • Keeper bot MVP <br> • All four pools on devnet <br> • Community audit |
-| **Phase 2: Mainnet Launch** | Q3 2026 | • Professional audit complete <br> • Collateral partner POL seeding (Ethena / Maple / Ondo) <br> • All four pools live on mainnet <br> • Jupiter aggregator integration |
-| **Phase 3: Multichain** | Q4 2026 | • Wormhole NTT (Solana ↔ Base) <br> • Lending protocol integrations (Kamino / MarginFi) <br> • Public analytics dashboard |
+| **Phase 1: Core Foundation** | Q2 2026 | • `guthix-core` devnet deployment <br> • SPL Token integration <br> • Keeper bot MVP <br> • All eight pools on devnet <br> • Community audit |
+| **Phase 2: Mainnet Launch** | Q3 2026 | • Professional audit complete <br> • Collateral partner POL seeding (Ethena / Maple / Ondo) <br> • All eight pools live on mainnet <br> • Jupiter aggregator integration |
+| **Phase 3: Multichain** | Q4 2026 | • Wormhole NTT (Solana ↔ Base) <br> • sgxUSD on Base DEXs <br> • Lending protocol integrations (Kamino / MarginFi) <br> • Public analytics dashboard |
 | **Phase 4: Decentralization** | Q1 2027 | • Guardian Council activation <br> • Safety Fund >5% TVL <br> • Keeper bonding (optional) <br> • Additional collateral assets (community vote) |
 
 ---
@@ -395,14 +427,14 @@ This project is licensed under the MIT License — see the [LICENSE](./LICENSE) 
 
 ## ⚠️ Disclaimer
 
-*This repository is for informational purposes only and does not constitute financial advice, investment recommendations, or an offer to sell or solicitation of an offer to buy any securities. GUTHIX is a decentralized protocol. sgxUSD is a vault token whose value floats and is not guaranteed to appreciate. Collateral assets including sUSDe, syrupUSDC, and USDY carry their own independent risks. Participants acknowledge that they are using the software at their own risk. Cryptocurrency investments are volatile and high-risk. Please consult a qualified financial advisor before making any investment decisions.*
+*This repository is for informational purposes only and does not constitute financial advice, investment recommendations, or an offer to sell or solicitation of an offer to buy any securities. GUTHIX is a decentralized protocol. sgxUSD is a vault token whose value floats and is not guaranteed to appreciate. Collateral assets including sUSDe, syrupUSDC, USDY, and Wormhole-bridged stablecoin variants carry their own independent risks including depeg risk. Participants acknowledge that they are using the software at their own risk. Cryptocurrency investments are volatile and high-risk. Please consult a qualified financial advisor before making any investment decisions.*
 
 ---
 
 ## 📞 Contact
 
 - **Website:** [www.guthix.finance](https://www.guthix.finance)
-- **Twitter:** [@GuthixProtocol](https://twitter.com/GuthixFinance)
+- **Twitter:** [@GuthixProtocol](https://twitter.com/GuthixProtocol)
 - **Email:** [research@guthix.finance](mailto:research@guthix.finance)
 - **Partnerships:** [partnerships@guthix.finance](mailto:partnerships@guthix.finance)
 - **Security:** [security@guthix.finance](mailto:security@guthix.finance)
@@ -411,4 +443,4 @@ This project is licensed under the MIT License — see the [LICENSE](./LICENSE) 
 
 *© 2026 Guthix Protocol Foundation. All rights reserved.*
 *Built on Solana. Secured by minimalism.*
-*One token. Pure yield. Liquidity that builds itself.*
+*One token. Five yield sources. Liquidity that builds itself.*
