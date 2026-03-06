@@ -370,10 +370,9 @@ GUTHIX is seeking co-seeding partners for the yield-bearing and bridge pools at 
 1. Swap USDC → sgxUSD on Jupiter or via app.guthix.finance
 2. Hold to earn passive yield via NAV appreciation across five uncorrelated yield sources
 3. Bridge to Base via Wormhole NTT
-4. Use as collateral on Kamino or MarginFi, trade, or hold
 
 ### For Contributors
-- Follow updates: [@GuthixProtocol](https://twitter.com/GuthixProtocol)
+- Follow updates: [@GuthixProtocol](https://twitter.com/GuthixFinance)
 - Propose improvements via GitHub Discussions
 
 ---
